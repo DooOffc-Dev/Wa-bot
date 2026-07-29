@@ -1,0 +1,7 @@
+node_modules
+*.local-auth
+session
+session-*
+warnings.json
+.env
+database.json

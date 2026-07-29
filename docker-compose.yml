@@ -1,0 +1,13 @@
+version: '3.8'
+services:
+  wanggy:
+    build: .
+    container_name: wanggy-botz-doo
+    volumes:
+      - ./:/usr/src/app
+      - ./session:/usr/src/app/session
+    environment:
+      - NODE_ENV=production
+    ports:
+      - "3000:3000"
+    restart: unless-stopped

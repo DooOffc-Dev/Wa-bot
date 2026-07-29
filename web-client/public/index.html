@@ -1,0 +1,22 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Wanggy - Botz Doo pairing</title>
+  <style>body{font-family:sans-serif;display:flex;flex-direction:column;align-items:center;padding:2rem}img{max-width:320px}</style>
+</head>
+<body>
+  <h1>Wanggy - Botz Doo (Pairing)</h1>
+  <div id="status">Connecting...</div>
+  <div id="qr"></div>
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    const status = document.getElementById('status');
+    const qr = document.getElementById('qr');
+    socket.on('connect', () => { status.innerText = 'Connected to server'; });
+    socket.on('qr', (data) => { qr.innerHTML = `<img src="${data.dataUrl}" alt="QR"/>`; status.innerText = 'Scan with WhatsApp'; });
+    socket.on('status', (s) => { status.innerText = s.connected ? 'WhatsApp connected' : ('Disconnected ' + (s.error||'')); if(!s.connected) qr.innerHTML=''; });
+  </script>
+</body>
+</html>

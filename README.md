@@ -1,24 +1,20 @@
-# WA Guardian Bot (starter)
+# Wanggy - Botz Doo
 
-Persyaratan:
-- Node.js 18+
-- Grup: jadikan bot sebagai admin agar bisa menghapus/kick.
+Bot WhatsApp modular dengan web pairing (socket.io) dan sistem command/plugin.
 
-Instal:
-1. git clone <repo> atau buat folder baru
-2. npm install
+Fitur awal (skeleton):
+- Web pairing: lihat /web-client untuk UI minimal menampilkan QR
+- Command loader modular (src/commands)
+- Contoh commands: ping, afk, tagall (admin only), anti-link
 
-Jalankan:
-1. node index.js
-2. Scan QR dari terminal (QR akan muncul)
-3. Setelah siap, tambahkan bot ke grup dan jadikan admin
+Cara menjalankan:
+1. git clone https://github.com/DooOffc-Dev/Wa-bot
+2. cd Wa-bot
+3. npm install
+4. Copy .env from secrets.example.env -> .env dan set JWT_SECRET (opsional)
+5. npm start
+6. Buka http://localhost:3000 (web client) untuk melihat QR dan status
 
-Fitur awal:
-- Welcome message (saat join)
-- Anti-link: hapus pesan berisi link, beri peringatan, kick setelah 3 peringatan (WARN_LIMIT)
-- Anti-delete: mem-publish ulang pesan yang dihapus
-- Respon sederhana "ping" -> "Pong!"
-
-Catatan keamanan & kebijakan:
-- Gunakan hanya di grup yang Anda kelola.
-- WhatsApp dapat membatasi/ban akun yang dipakai untuk automasi tertentu; selalu ikuti kebijakan WhatsApp.
+Catatan:
+- Jangan commit file session; session file ditambahkan otomatis oleh whatsapp-web.js dan .gitignore sudah mengabaikannya.
+- Untuk fitur kick/hapus pesan, bot harus admin di grup.
