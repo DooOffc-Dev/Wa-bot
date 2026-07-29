@@ -1,0 +1,22 @@
+{
+  "name": "wanggy-botz-doo",
+  "version": "0.1.0",
+  "description": "Wanggy - Botz Doo (WhatsApp guardian bot with web pairing and modular commands)",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js"
+  },
+  "dependencies": {
+    "whatsapp-web.js": "^1.20.0",
+    "qrcode-terminal": "^0.12.0",
+    "express": "^4.18.2",
+    "socket.io": "^4.7.2",
+    "qrcode": "^1.5.1",
+    "dotenv": "^16.3.1",
+    "cors": "^2.8.5"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
