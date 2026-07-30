@@ -5,6 +5,7 @@ const path = require('path');
 const CommandLoader = require('./lib/command-loader');
 const Permissions = require('./lib/permissions');
 const Utils = require('./lib/utils');
+const db = require('./lib/db');
 
 let client;
 let commands = {};
@@ -41,12 +42,37 @@ async function start(io, app) {
     io.emit('status', { connected: false });
   });
 
+  // helper to check admin
+  async function isAdminInChat(chat, id) {
+    if (!chat.isGroup) return false;
+    const admins = (await chat.getAdmins()).map(a => a.id._serialized);
+    return admins.includes(id);
+  }
+
   client.on('message_create', async (msg) => {
     if (msg.fromMe) return;
     try {
       const chat = await msg.getChat();
       const contact = await msg.getContact();
       const body = (msg.body || '').trim();
+
+      const groupId = chat.id ? chat.id._serialized : null;
+      const senderId = contact.id._serialized;
+
+      // global banned list per group
+      const bannedList = db.get('banned') || {};
+      if (chat.isGroup && bannedList[groupId] && bannedList[groupId].includes(senderId)) {
+        // try to remove if still in group
+        try { await chat.removeParticipants([senderId]); } catch (e) {}
+        return;
+      }
+
+      // muted users: if muted, delete message
+      const muted = db.get('muted') || {};
+      if (chat.isGroup && muted[groupId] && muted[groupId].includes(senderId)) {
+        try { await msg.delete(true); } catch (e) {}
+        return;
+      }
 
       // very simple prefix command: !cmd args...
       if (body.startsWith('!')) {
@@ -55,25 +81,76 @@ async function start(io, app) {
         const args = parts.slice(1);
         const command = commands[name] || Object.values(commands).find(c => c.aliases && c.aliases.includes(name));
         if (command) {
-          // permission checks
-          const isOwner = Permissions.isOwner(contact.id._serialized);
-          const isAdmin = (chat.isGroup && (await chat.getAdmins()).some(a => a.id._serialized === contact.id._serialized));
+          const isOwner = Permissions.isOwner(senderId);
+          const isAdmin = await isAdminInChat(chat, senderId);
           if (command.ownerOnly && !isOwner) return msg.reply('Command owner only.');
           if (command.adminOnly && !isAdmin && !isOwner) return msg.reply('Command admin only.');
-          await command.run({ msg, args, client, chat, contact, utils: Utils });
+          try {
+            await command.run({ msg, args, client, chat, contact, utils: Utils, db });
+          } catch (e) {
+            console.error('Command error', e);
+            await msg.reply('Command failed: ' + e.message);
+          }
         }
       }
 
-      // moderation: anti-link example
-      const antiLinkCmd = commands['antilink'];
-      if (chat.isGroup && antiLinkCmd) {
-        await antiLinkCmd.run({ msg, client, chat, contact, utils: Utils });
+      // moderation features (automatic handlers)
+      // anti-link handled by antiLink command module if present
+      if (chat.isGroup && commands['antilink']) {
+        try { await commands['antilink'].run({ msg, client, chat, contact, utils: Utils, db }); } catch (e) {}
+      }
+
+      // anti-invite: detect chat.whatsapp.com links
+      const INVITE_RE = /chat\.whatsapp\.com\/[A-Za-z0-9]+/i;
+      if (chat.isGroup && INVITE_RE.test(body)) {
+        const settings = db.get('settings') || {};
+        const g = settings[groupId] || {};
+        if (g.antiInvite !== false) {
+          // only act if sender not admin
+          const isSenderAdmin = await isAdminInChat(chat, senderId);
+          if (!isSenderAdmin) {
+            try { await msg.delete(true); } catch (e) {}
+            await chat.sendMessage(`@${contact.number} Group invite links are not allowed.`, { mentions: [contact] });
+          }
+        }
+      }
+
+      // anti-spam: naive rate limit
+      const SPAM_WINDOW_MS = 7000; // 7 seconds
+      const SPAM_THRESHOLD = 5; // messages in window
+      const now = Date.now();
+      const recent = db.get('recent') || {};
+      recent[senderId] = recent[senderId] || [];
+      recent[senderId].push(now);
+      // purge old
+      recent[senderId] = recent[senderId].filter(t => now - t <= SPAM_WINDOW_MS);
+      db.set('recent', recent);
+      if (recent[senderId].length >= SPAM_THRESHOLD) {
+        // warn or delete
+        try { await msg.delete(true); } catch (e) {}
+        await chat.sendMessage(`@${contact.number} Please stop spamming.`, { mentions: [contact] });
       }
 
     } catch (e) { console.error('message_create handler', e); }
   });
 
-  client.initialize();
+  // event: someone deletes message for everyone
+  client.on('message_revoke_everyone', async (after, before) => {
+    try {
+      if (!before) return;
+      const chatId = before.from || before._data?.id?._serialized;
+      const chat = await client.getChatById(chatId);
+      if (!chat) return;
+      if (chat.isGroup) {
+        const authorId = before.author || before.from;
+        const authorNumber = authorId ? authorId.split('@')[0] : 'unknown';
+        const original = before.body || '<media/unknown>';
+        await chat.sendMessage(`@${authorNumber} deleted a message:\n\n${original}`, { mentions: [{ id: authorId }] });
+      }
+    } catch (e) { console.warn('Error on message_revoke_everyone:', e.message); }
+  });
+
+  return client.initialize();
 }
 
 module.exports = { start };
