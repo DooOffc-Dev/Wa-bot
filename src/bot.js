@@ -1,3 +1,4 @@
+// Update bot to accept both '!' and '.' prefixes for commands
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
 const fs = require('fs');
@@ -74,8 +75,8 @@ async function start(io, app) {
         return;
       }
 
-      // very simple prefix command: !cmd args...
-      if (body.startsWith('!')) {
+      // support both ! and . prefixes
+      if (body.startsWith('!') || body.startsWith('.')) {
         const parts = body.slice(1).split(/\s+/);
         const name = parts[0].toLowerCase();
         const args = parts.slice(1);
@@ -95,18 +96,15 @@ async function start(io, app) {
       }
 
       // moderation features (automatic handlers)
-      // anti-link handled by antiLink command module if present
       if (chat.isGroup && commands['antilink']) {
         try { await commands['antilink'].run({ msg, client, chat, contact, utils: Utils, db }); } catch (e) {}
       }
 
-      // anti-invite: detect chat.whatsapp.com links
       const INVITE_RE = /chat\.whatsapp\.com\/[A-Za-z0-9]+/i;
       if (chat.isGroup && INVITE_RE.test(body)) {
         const settings = db.get('settings') || {};
         const g = settings[groupId] || {};
         if (g.antiInvite !== false) {
-          // only act if sender not admin
           const isSenderAdmin = await isAdminInChat(chat, senderId);
           if (!isSenderAdmin) {
             try { await msg.delete(true); } catch (e) {}
@@ -115,18 +113,16 @@ async function start(io, app) {
         }
       }
 
-      // anti-spam: naive rate limit
-      const SPAM_WINDOW_MS = 7000; // 7 seconds
-      const SPAM_THRESHOLD = 5; // messages in window
+      // anti-spam naive
+      const SPAM_WINDOW_MS = 7000;
+      const SPAM_THRESHOLD = 5;
       const now = Date.now();
       const recent = db.get('recent') || {};
       recent[senderId] = recent[senderId] || [];
       recent[senderId].push(now);
-      // purge old
       recent[senderId] = recent[senderId].filter(t => now - t <= SPAM_WINDOW_MS);
       db.set('recent', recent);
       if (recent[senderId].length >= SPAM_THRESHOLD) {
-        // warn or delete
         try { await msg.delete(true); } catch (e) {}
         await chat.sendMessage(`@${contact.number} Please stop spamming.`, { mentions: [contact] });
       }
@@ -145,7 +141,12 @@ async function start(io, app) {
         const authorId = before.author || before.from;
         const authorNumber = authorId ? authorId.split('@')[0] : 'unknown';
         const original = before.body || '<media/unknown>';
-        await chat.sendMessage(`@${authorNumber} deleted a message:\n\n${original}`, { mentions: [{ id: authorId }] });
+        // check group setting if antiDelete enabled
+        const settings = db.get('settings') || {};
+        const g = settings[chatId] || {};
+        if (g.antiDelete !== false) {
+          await chat.sendMessage(`@${authorNumber} deleted a message:\n\n${original}`, { mentions: [{ id: authorId }] });
+        }
       }
     } catch (e) { console.warn('Error on message_revoke_everyone:', e.message); }
   });
